@@ -15,7 +15,7 @@
 #include <misc/util.h>
 #include <kernel.h>
 #include <console.h>
-#include <crc16.h>
+#include <sys/crc.h>
 
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/hci.h>
