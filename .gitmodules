@@ -1,0 +1,3 @@
+[submodule "beacon-pcb/kicad-magic"]
+	path = beacon-pcb/kicad-magic
+	url = https://github.com/oskirby/kicad-magic.git
