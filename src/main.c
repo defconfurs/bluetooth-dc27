@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <misc/printk.h>
 #include <misc/util.h>
+#include <drivers/hwinfo.h>
 #include <kernel.h>
 #include <console.h>
 #include <sys/crc.h>
@@ -24,8 +25,10 @@
 #include <nrf.h>
 #include <system_nrf51.h>
 
+#include "badge.h"
+
 /* Generate and update beacons */
-static void dc27_beacon_reset(void);
+static void dc27_beacon_reset(struct i2c_status_regs *regs);
 static void dc27_start_awoo(uint8_t ttl, uint16_t origin);
 
 #define DC27_MAGIC_NONE     0x00
@@ -45,10 +48,13 @@ struct dc27_scan_data {
     uint8_t payload[16];
 };
 
+static struct i2c_status_regs dc27_i2c_status;
+static struct i2c_config_regs dc27_i2c_config;
+
 static uint16_t dc27_badge_serial = 0xffff;
 
 /* Update the idle beacon content. */
-static void dc27_beacon_reset(void)
+static void dc27_beacon_reset(struct i2c_status_regs *status)
 {
     const struct bt_le_adv_param adv_param = {
         .options = 0,
@@ -60,7 +66,7 @@ static void dc27_beacon_reset(void)
     u8_t adv_data[] = {
         (DCFURS_MFGID_BADGE >> 0) & 0xff, /* DCFurs Cheaty Vendor ID */
         (DCFURS_MFGID_BADGE >> 8) & 0xff,
-        DC27_MAGIC_NONE,                 /* No Magic */
+        status->magic,
         (dc27_badge_serial >> 0) & 0xff, /* Serial */
         (dc27_badge_serial >> 8) & 0xff,
     };
@@ -76,7 +82,7 @@ static void dc27_beacon_reset(void)
 }
 
 /* Timer/Workqueue handlers for clearing special beacons. */
-static void dc27_magic_work(struct k_work *work) { dc27_beacon_reset(); }
+static void dc27_magic_work(struct k_work *work) { dc27_beacon_reset(&dc27_i2c_status); }
 K_WORK_DEFINE(dc27_magic_worker, dc27_magic_work);
 static void dc27_magic_expire(struct k_timer *timer_id) { k_work_submit(&dc27_magic_worker); }
 K_TIMER_DEFINE(dc27_magic_timer, dc27_magic_expire, NULL);
@@ -144,6 +150,9 @@ static void dc27_rssi_insert(s8_t rssi)
     /* Update the sum */
     dc27_rssi_sum -= prev;
     dc27_rssi_sum += rssi;
+
+    /* Update the exported RSSI measurement. */
+    dc27_i2c_status.rssi = dc27_rssi_sum / DC27_RSSI_HISTORY_LEN;
 }
 
 /* Cooldown timer between emotes. */
@@ -320,7 +329,7 @@ do_set(int argc, char **argv)
         }
         if (strcmp(name, "serial") == 0) {
             dc27_badge_serial = strtoul(value, NULL, 0);
-            dc27_beacon_reset();
+            dc27_beacon_reset(&dc27_i2c_status);
         }
     }
 }
@@ -364,7 +373,12 @@ main(void)
     };
     int err;
 
+    /* Setup the initial state of the I2C register space. */
+    hwinfo_get_device_id(dc27_i2c_status.devid, sizeof(dc27_i2c_status.devid));
+    strcpy(dc27_i2c_config.name, "DEFCON Furs");
+
     console_getline_init();
+    i2c_slave_init(&dc27_i2c_status, &dc27_i2c_config);
     printk("Starting DC27 Badge Comms\n");
 
     /* Initialize the Bluetooth Subsystem */
@@ -375,7 +389,7 @@ main(void)
     }
 
     /* Start advertising */
-    dc27_beacon_reset();
+    dc27_beacon_reset(&dc27_i2c_status);
     dc27_emote_reset_cooldowns();
 
     err = bt_le_scan_start(&scan_param, scan_cb);
@@ -406,7 +420,7 @@ main(void)
         }
         else if (strcmp(name, "set") == 0) {
             do_set(i, args);
-            dc27_beacon_reset();
+            dc27_beacon_reset(&dc27_i2c_status);
         }
         else if (strcmp(name, "tx") == 0) {
             do_tx(i, args);

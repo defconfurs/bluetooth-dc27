@@ -1,0 +1,11 @@
+diff --git a/ext/hal/nordic/CMakeLists.txt b/ext/hal/nordic/CMakeLists.txt
+index c01ce2f..5786c28 100644
+--- a/ext/hal/nordic/CMakeLists.txt
++++ b/ext/hal/nordic/CMakeLists.txt
+@@ -53,4 +53,6 @@ if(CONFIG_HAS_NRFX)
+   zephyr_sources_ifdef(CONFIG_NRFX_UARTE   nrfx/drivers/src/nrfx_uarte.c)
+   zephyr_sources_ifdef(CONFIG_NRFX_USBD    nrfx/drivers/src/nrfx_usbd.c)
+   zephyr_sources_ifdef(CONFIG_NRFX_WDT     nrfx/drivers/src/nrfx_wdt.c)
++
++  zephyr_sources(nrfx/drivers/src/nrfx_twis.c)
+ endif()
