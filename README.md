@@ -18,7 +18,7 @@ Build the badge BLE firmware:
  * source zephyr-env.sh
  * cd into the BLE firmware checkout
  * mkdir build && cd build
- * cmake -GNinja -DBOARD=dcfurs_bt832a ..
+ * cmake -GNinja ..
  * ninja
 
 Bluetooth Beacon Format

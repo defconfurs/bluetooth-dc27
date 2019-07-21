@@ -14,16 +14,15 @@
 #include <logging/log.h>
 LOG_MODULE_REGISTER(i2c_nrfx_twis);
 
+#define I2C_REGADDR_TEXT 64
+
 struct i2c_dcfurs_data {
     nrfx_twis_t twis;
     nrfx_twis_config_t config;
     /* Register data */
-    const uint8_t *ro_regs;
-    size_t         ro_length;
-    uint8_t *rw_regs;
-    size_t   rw_length;
-    const char *text;
-    size_t      text_length;
+    struct i2c_regs *regs;
+    const char      *text;
+    size_t          text_length;
     /* Pretend to operate as an I2C EEPROM with 8-bit addressing. */
     uint8_t  bufaddr;
     uint8_t  buffer[256];
@@ -40,7 +39,6 @@ static struct i2c_dcfurs_data i2c_data = {
         .sda_pull = NRF_GPIO_PIN_NOPULL,
         .interrupt_priority = NRFX_TWIS_DEFAULT_CONFIG_IRQ_PRIORITY,
     },
-    .text = "Hello World",
     .bufaddr = 0,
     .buffer = {0},
 };
@@ -48,18 +46,61 @@ static struct i2c_dcfurs_data i2c_data = {
 /* Fill up the read buffer. */
 static void fill_buffer(struct i2c_dcfurs_data *data)
 {
+    const uint8_t *indata = (const void *)data->regs;
     int in = data->bufaddr;
     int out = 0;
 
-    while (in < data->ro_length) {
-        data->buffer[out++] = data->ro_regs[in++];
+    /* Get bytes from the register map */
+    while (in < sizeof(struct i2c_regs)) {
+        data->buffer[out++] = indata[in++];
     }
-    while (in < data->ro_length + data->rw_length) {
-        data->buffer[out++] = data->rw_regs[in++ - data->ro_length];
+
+    /* Get bytes from the test region. */
+    while (in < I2C_REGADDR_TEXT) {
+        data->buffer[out++] = 0x00;
+        in++;
+    }
+    while ((in - I2C_REGADDR_TEXT) < data->text_length) {
+        if (out >= sizeof(data->buffer)) return;
+        data->buffer[out++] = data->text[in - I2C_REGADDR_TEXT];
+        in++;
     }
     while (out < sizeof(data->buffer)) {
         data->buffer[out++] = 0;
     }
+}
+
+/* Handle any writes to the rw section. */
+static void flush_write(struct i2c_dcfurs_data *data, uint32_t length)
+{
+    uint8_t *outdata = (void *)&data->regs;
+    int out = data->bufaddr;
+    int in = 0;
+    int end;
+
+    /* Require at least one byte for the address, and at least one payload byte. */
+    if (length < 2) return;
+    length--;
+    if (length > sizeof(data->buffer)) length = sizeof(data->buffer);
+    end = data->bufaddr + length;
+
+    /* Skip any bytes in the RO registers. */
+    if (out < offsetof(struct i2c_regs, config)) {
+        in += (offsetof(struct i2c_regs, config) - out);
+        out = offsetof(struct i2c_regs, config);
+    }
+    /* Ignore any bytes passed the end of the RW registers. */
+    if (end > sizeof(struct i2c_regs)) {
+        end = sizeof(struct i2c_regs);
+    }
+    if (in >= end) return;
+
+    /* Any remaining bytes must be in the RW registers, so copy them. */
+    while (in < end) {
+        outdata[out++] = data->buffer[in++];
+    }
+    /* Signal that the beacon may need to be reset. */
+    dc27_beacon_refresh();
 }
 
 static void event_handler(nrfx_twis_evt_t const *p_event)
@@ -86,7 +127,10 @@ static void event_handler(nrfx_twis_evt_t const *p_event)
     
     case NRFX_TWIS_EVT_WRITE_DONE:
         /* Write completed - examine the address and copy the data out to its final home. */
-        data->bufaddr += p_event->data.rx_amount;
+        flush_write(data, p_event->data.rx_amount);
+        if (p_event->data.rx_amount) {
+            data->bufaddr += p_event->data.rx_amount - 1;
+        }
         break;
 
 	case NRFX_TWIS_EVT_READ_ERROR:
@@ -99,15 +143,14 @@ static void event_handler(nrfx_twis_evt_t const *p_event)
 }
 
 /* Attach and start I2C as an slave */
-int i2c_slave_init(struct i2c_status_regs *ro_regs, struct i2c_config_regs *rw_regs)
+int i2c_slave_init(struct i2c_regs *regs)
 {
     struct i2c_dcfurs_data *data = &i2c_data;
 	nrfx_err_t result;
 
-    i2c_data.ro_regs = (const void *)ro_regs;
-    i2c_data.ro_length = sizeof(struct i2c_status_regs);
-    i2c_data.rw_regs = (void *)rw_regs;
-    i2c_data.rw_length = sizeof(struct i2c_config_regs);
+    i2c_data.regs = regs;
+    i2c_data.text = "Hello World!";
+    i2c_data.text_length = strlen(i2c_data.text);
 
     IRQ_CONNECT(DT_NORDIC_NRF_I2C_I2C_0_IRQ_0,
             DT_NORDIC_NRF_I2C_I2C_0_IRQ_0_PRIORITY,
