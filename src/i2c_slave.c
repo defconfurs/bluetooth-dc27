@@ -73,7 +73,7 @@ static void fill_buffer(struct i2c_dcfurs_data *data)
 /* Handle any writes to the rw section. */
 static void flush_write(struct i2c_dcfurs_data *data, uint32_t length)
 {
-    uint8_t *outdata = (void *)&data->regs;
+    uint8_t *outdata = (void *)data->regs;
     int out = data->bufaddr;
     int in = 0;
     int end;
@@ -99,8 +99,15 @@ static void flush_write(struct i2c_dcfurs_data *data, uint32_t length)
     while (in < end) {
         outdata[out++] = data->buffer[in++];
     }
-    /* Signal that the beacon may need to be reset. */
-    dc27_beacon_refresh();
+    /* If the txlen register was written, begin a beacon transmit. */
+    if ( (data->bufaddr <= offsetof(struct i2c_regs, config.txlen)) &&
+         (end > offsetof(struct i2c_regs, config.txlen)) ) {
+        dc27_start_transmit();
+    }
+    /* Otherwise, signal that the beacon may need to be reset. */
+    else {
+        dc27_beacon_refresh();
+    }
 }
 
 static void event_handler(nrfx_twis_evt_t const *p_event)

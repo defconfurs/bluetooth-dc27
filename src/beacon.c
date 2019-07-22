@@ -81,6 +81,7 @@ static void dc27_beacon_reset(struct k_work *work)
     }
 
     /* Start the advertisement. */
+    /* TODO: If the adv_data got too long, we may need to use active scan data. */
     struct bt_data adv[] = {
         BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, (DC27_APPEARANCE & 0x00ff) >> 0, (DC27_APPEARANCE & 0xff00) >> 8),
         BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
@@ -90,6 +91,46 @@ static void dc27_beacon_reset(struct k_work *work)
     bt_le_adv_start(&adv_param, adv, ARRAY_SIZE(adv), NULL, 0);
 }
 K_WORK_DEFINE(dc27_beacon_worker, dc27_beacon_reset);
+
+static void do_transmit(struct k_work *work)
+{
+    struct i2c_regs *regs = &dc27_i2c_regs;
+    struct bt_le_adv_param adv_param = {
+        .options = 0,
+        .interval_min = BT_GAP_ADV_FAST_INT_MIN_1,
+        .interval_max = BT_GAP_ADV_FAST_INT_MAX_1,
+    };
+    u8_t i;
+    u8_t adv_length = 0;
+    u8_t adv_data[32];
+
+    /* Stop advertising and update the beacon payload. */
+    bt_le_adv_stop();
+    /* Start a timer to reset the beacon after 1 second. */
+    k_timer_start(&dc27_magic_timer, K_SECONDS(1), 0);
+
+    /* Fixed #badgelife header format */
+    adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 0) & 0xff;
+    adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 8) & 0xff;
+    adv_data[adv_length++] = regs->config.txmagic;
+    adv_data[adv_length++] = (regs->status.serial >> 0) & 0xff;
+    adv_data[adv_length++] = (regs->status.serial >> 8) & 0xff;
+    /* Copy in the arbitrary payload data. */
+    for (i = 0; i < regs->config.txlen; i++) {
+        if (adv_length >= sizeof(adv_data)) break;
+        adv_data[adv_length++] = regs->config.txdata[i];
+    }
+
+    /* Start the advertisement. */
+    struct bt_data adv[] = {
+        BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, (DC27_APPEARANCE & 0x00ff) >> 0, (DC27_APPEARANCE & 0xff00) >> 8),
+        BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
+        BT_DATA(BT_DATA_NAME_COMPLETE, regs->config.name, strnlen(regs->config.name, sizeof(regs->config.name))),
+        BT_DATA(BT_DATA_MANUFACTURER_DATA, adv_data, adv_length),
+    };
+    bt_le_adv_start(&adv_param, adv, ARRAY_SIZE(adv), NULL, 0);
+}
+K_WORK_DEFINE(dc27_transmit_worker, do_transmit);
 
 /* Timer function to clear out any magic beacons. */
 static void dc27_magic_expire(struct k_timer *timer_id)
@@ -111,6 +152,12 @@ static void dc27_emote_expire(struct k_timer *timer_id)
 void dc27_beacon_refresh(void)
 {
     k_work_submit(&dc27_beacon_worker);
+}
+
+/* Called to begin an arbitrary beacon transmit via the I2C regs. */
+void dc27_start_transmit(void)
+{
+    k_work_submit(&dc27_transmit_worker);
 }
 
 /* Average RSSI Tracking */

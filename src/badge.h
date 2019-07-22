@@ -20,16 +20,22 @@ struct i2c_regs {
         uint8_t     ttl;        /* TTL for routed messages. */
         uint16_t    origin;     /* Originator for current messages. */
         uint8_t     emote[8];   /* Received emote string. */
+        uint8_t     __pad0[4];
     } status;
 
     /* Config Registers - treated as read-write. */
     struct {
-        char        name[16];   /* BLE advertisement name */
+        char        name[12];   /* BLE advertisement name */
+        uint8_t     __pad1[2];
+        uint8_t     txlen;
+        uint8_t     txmagic;
+        uint8_t     txdata[32];
     } config;
 };
 
 /* Status Register Flags */
 #define DC27_FLAG_EMOTE     (1 << 0)
+#define DC27_FLAG_COLOR     (1 << 1)
 
 /* #badgelife/DCFurs beacon constants */
 #define DC27_MAGIC_NONE     0x00
@@ -41,6 +47,7 @@ struct i2c_regs {
 #define DCFURS_MFGID_BEACON 0x0DCF
 
 void dc27_beacon_refresh(void);
+void dc27_start_transmit(void);
 void dc27_start_awoo(uint8_t ttl, uint16_t origin);
 int dc26_beacon_init(void);
 int i2c_slave_init(struct i2c_regs *regs);
