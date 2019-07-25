@@ -1,5 +1,3 @@
-/* main.c - Application main entry point */
-
 /*
  * Copyright (c) 2019 DEFCON Furs
  *

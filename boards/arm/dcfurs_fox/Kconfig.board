@@ -1,0 +1,9 @@
+# Kconfig - DCFurs fox beacon configuration
+#
+# Copyright (c) 2019 DEFCON Furs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config  BOARD_DCFURS_FOX
+	bool "DCFurs Fox Beacon"
+	depends on SOC_NRF52832_QFAA

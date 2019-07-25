@@ -1,0 +1,25 @@
+# Kconfig - DCFurs fox beacon configuration
+#
+# Copyright (c) 2019 DEFCON Furs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_DCFURS_FOX
+
+config BOARD
+	default "dcfurs_fox"
+
+config GPIO_AS_PINRESET
+	default n
+
+if I2C
+
+config I2C_0
+	default y
+
+endif # I2C
+
+config BT_CTLR
+	default BT
+
+endif # BOARD_DCFURS_FOX

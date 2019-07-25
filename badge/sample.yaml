@@ -1,6 +1,5 @@
 sample:
-  description: TBD
-  name: TBD
+  name: DCFurs Bluetooth Firmware
 tests:
   sample.bluetooth.scan_adv:
     harness: bluetooth

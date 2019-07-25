@@ -1,5 +1,4 @@
 EESchema Schematic File Version 4
-LIBS:beacon-pcb-cache
 EELAYER 26 0
 EELAYER END
 $Descr A4 11693 8268
@@ -14,17 +13,6 @@ Comment2 ""
 Comment3 ""
 Comment4 ""
 $EndDescr
-$Comp
-L KiCAD-Magic:BT832 IC1
-U 1 1 5D229631
-P 3250 3150
-F 0 "IC1" H 3225 3915 50  0000 C CNN
-F 1 "BT832" H 3225 3824 50  0000 C CNN
-F 2 "KiCAD Magic:BT832" H 3250 3150 50  0001 C CNN
-F 3 "" H 3250 3150 50  0001 C CNN
-	1    3250 3150
-	1    0    0    -1  
-$EndComp
 $Comp
 L power:GND #PWR0101
 U 1 1 5D22969F
@@ -288,4 +276,15 @@ Wire Wire Line
 	2100 3850 2200 3850
 Wire Wire Line
 	2500 3850 2600 3850
+$Comp
+L KiCAD_Magic:BT832 IC1
+U 1 1 5D365472
+P 3250 3150
+F 0 "IC1" H 3225 3915 50  0000 C CNN
+F 1 "BT832" H 3225 3824 50  0000 C CNN
+F 2 "KiCAD Magic:BT832" H 3250 3150 50  0001 C CNN
+F 3 "" H 3250 3150 50  0001 C CNN
+	1    3250 3150
+	1    0    0    -1  
+$EndComp
 $EndSCHEMATC

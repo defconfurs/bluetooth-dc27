@@ -1,0 +1,14 @@
+# Kconfig - DCFurs fox beacon configuration
+#
+# Copyright (c) 2019 DEFCON Furs
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_DCFURS_FOX
+
+config BOARD_ENABLE_DCDC
+	bool "Enable DCDC mode"
+	select SOC_DCDC_NRF52X
+	default y
+
+endif # BOARD_DCFURS_FOX

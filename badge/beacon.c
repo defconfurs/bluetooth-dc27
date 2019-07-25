@@ -42,8 +42,6 @@ static void dc27_beacon_reset(struct k_work *work)
     adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 0) & 0xff;
     adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 8) & 0xff;
     adv_data[adv_length++] = regs->status.magic;
-    adv_data[adv_length++] = (regs->status.serial >> 0) & 0xff;
-    adv_data[adv_length++] = (regs->status.serial >> 8) & 0xff;
 
     /*
      * For any magic beacons, set the advertising rate as fast as possible, and
@@ -57,19 +55,24 @@ static void dc27_beacon_reset(struct k_work *work)
 
     /* Add any additional beacon contents depending on the magic byte. */
     switch (regs->status.magic) {
+        case DC27_MAGIC_NONE:
+            adv_data[adv_length++] = (regs->status.serial >> 0) & 0xff;
+            adv_data[adv_length++] = (regs->status.serial >> 8) & 0xff;
+            break;
+
         case DC27_MAGIC_AWOO:
             /* Stop propagation when TTL reaches zero. */
             if (regs->status.ttl == 0) return;
-            adv_data[adv_length++] = regs->status.ttl - 1;
             adv_data[adv_length++] = (regs->status.origin >> 0) & 0xff;
             adv_data[adv_length++] = (regs->status.origin >> 8) & 0xff;
+            adv_data[adv_length++] = regs->status.ttl - 1;
             break;
         
         case DC27_MAGIC_EMOTE:
             adv_data[adv_length++] = (regs->status.color >> 0) & 0xff;
             adv_data[adv_length++] = (regs->status.color >> 8) & 0xff;
-            strncpy(adv_data + adv_length, regs->status.emote, sizeof(regs->status.emote));
-            adv_length += strnlen(regs->status.emote, sizeof(regs->status.emote));
+            adv_data[adv_length++] = regs->status.emote[0];
+            adv_data[adv_length++] = regs->status.emote[1];
             break;
         
         case DC27_MAGIC_COLOR:
@@ -81,7 +84,6 @@ static void dc27_beacon_reset(struct k_work *work)
     }
 
     /* Start the advertisement. */
-    /* TODO: If the adv_data got too long, we may need to use active scan data. */
     struct bt_data adv[] = {
         BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, (DC27_APPEARANCE & 0x00ff) >> 0, (DC27_APPEARANCE & 0xff00) >> 8),
         BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
@@ -113,8 +115,6 @@ static void do_transmit(struct k_work *work)
     adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 0) & 0xff;
     adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 8) & 0xff;
     adv_data[adv_length++] = regs->config.txmagic;
-    adv_data[adv_length++] = (regs->status.serial >> 0) & 0xff;
-    adv_data[adv_length++] = (regs->status.serial >> 8) & 0xff;
     /* Copy in the arbitrary payload data. */
     for (i = 0; i < regs->config.txlen; i++) {
         if (adv_length >= sizeof(adv_data)) break;
@@ -125,10 +125,13 @@ static void do_transmit(struct k_work *work)
     struct bt_data adv[] = {
         BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, (DC27_APPEARANCE & 0x00ff) >> 0, (DC27_APPEARANCE & 0xff00) >> 8),
         BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR),
-        BT_DATA(BT_DATA_NAME_COMPLETE, regs->config.name, strnlen(regs->config.name, sizeof(regs->config.name))),
         BT_DATA(BT_DATA_MANUFACTURER_DATA, adv_data, adv_length),
     };
-    bt_le_adv_start(&adv_param, adv, ARRAY_SIZE(adv), NULL, 0);
+    /* Move the badge name into the scan response to make room for more payload. */
+    struct bt_data rsp[] = {
+        BT_DATA(BT_DATA_NAME_COMPLETE, regs->config.name, strnlen(regs->config.name, sizeof(regs->config.name))),
+    };
+    bt_le_adv_start(&adv_param, adv, ARRAY_SIZE(adv), rsp, ARRAY_SIZE(rsp));
 }
 K_WORK_DEFINE(dc27_transmit_worker, do_transmit);
 
@@ -361,8 +364,8 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
             /* Route the magic beacon another hop */
             dc27_awoo_cooldown = k_uptime_get() + K_SECONDS(300);
             dc27_i2c_regs.status.magic = DC27_MAGIC_AWOO;
+            dc27_i2c_regs.status.origin = (data.payload[1] << 8) | data.payload[0];
             dc27_i2c_regs.status.ttl = data.payload[0];
-            dc27_i2c_regs.status.origin = (data.payload[2] << 8) | data.payload[1];
             dc27_beacon_refresh();
             break;
     }
