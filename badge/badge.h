@@ -19,8 +19,8 @@ struct i2c_regs {
         int8_t      rssi;       /* Average beacon RSSI. */
         uint8_t     ttl;        /* TTL for routed messages. */
         uint16_t    origin;     /* Originator for current messages. */
-        uint8_t     emote[8];   /* Received emote string. */
-        uint8_t     __pad0[4];
+        uint8_t     emote[2];   /* Received emote string. */
+        uint8_t     __pad0[10];
     } status;
 
     /* Config Registers - treated as read-write. */
