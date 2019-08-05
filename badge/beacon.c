@@ -18,10 +18,8 @@
 
 struct i2c_regs dc27_i2c_regs;
 
-static void dc27_magic_expire(struct k_timer *timer_id);
-K_TIMER_DEFINE(dc27_magic_timer, dc27_magic_expire, NULL);
-static void dc27_emote_expire(struct k_timer *timer_id);
-K_TIMER_DEFINE(dc27_emote_timer, dc27_emote_expire, NULL);
+/* Expiration timeout for any magic beacon actions. */
+static s64_t dc27_expire_timeout = 0;
 
 /* Timer/Workqueue handlers for updating beacon contents. */
 static void dc27_beacon_reset(struct k_work *work)
@@ -38,6 +36,9 @@ static void dc27_beacon_reset(struct k_work *work)
     /* Stop advertising and update the beacon payload. */
     bt_le_adv_stop();
 
+    /* Lock the scheduler during beacon generation. */
+    k_sched_lock();
+
     /* Fixed #badgelife header format */
     adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 0) & 0xff;
     adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 8) & 0xff;
@@ -50,7 +51,7 @@ static void dc27_beacon_reset(struct k_work *work)
     if (regs->status.magic != DC27_MAGIC_NONE) {
         adv_param.interval_min = BT_GAP_ADV_FAST_INT_MIN_1;
         adv_param.interval_max = BT_GAP_ADV_FAST_INT_MAX_1;
-        k_timer_start(&dc27_magic_timer, K_SECONDS(1), 0);
+        dc27_expire_timeout = k_uptime_get() + K_SECONDS(1);
     }
 
     /* Add any additional beacon contents depending on the magic byte. */
@@ -90,6 +91,7 @@ static void dc27_beacon_reset(struct k_work *work)
         BT_DATA(BT_DATA_NAME_COMPLETE, regs->config.name, strnlen(regs->config.name, sizeof(regs->config.name))),
         BT_DATA(BT_DATA_MANUFACTURER_DATA, adv_data, adv_length),
     };
+    k_sched_unlock();
     bt_le_adv_start(&adv_param, adv, ARRAY_SIZE(adv), NULL, 0);
 }
 K_WORK_DEFINE(dc27_beacon_worker, dc27_beacon_reset);
@@ -108,8 +110,10 @@ static void do_transmit(struct k_work *work)
 
     /* Stop advertising and update the beacon payload. */
     bt_le_adv_stop();
-    /* Start a timer to reset the beacon after 1 second. */
-    k_timer_start(&dc27_magic_timer, K_SECONDS(1), 0);
+
+    /* Lock the scheduler during beacon generation. */
+    k_sched_lock();
+    dc27_expire_timeout = k_uptime_get() + K_SECONDS(1);
 
     /* Fixed #badgelife header format */
     adv_data[adv_length++] = (DCFURS_MFGID_BADGE >> 0) & 0xff;
@@ -131,26 +135,29 @@ static void do_transmit(struct k_work *work)
     struct bt_data rsp[] = {
         BT_DATA(BT_DATA_NAME_COMPLETE, regs->config.name, strnlen(regs->config.name, sizeof(regs->config.name))),
     };
+
+    k_sched_unlock();
     bt_le_adv_start(&adv_param, adv, ARRAY_SIZE(adv), rsp, ARRAY_SIZE(rsp));
 }
 K_WORK_DEFINE(dc27_transmit_worker, do_transmit);
 
-/* Timer function to clear out any magic beacons. */
-static void dc27_magic_expire(struct k_timer *timer_id)
+static void do_expire(struct k_timer *timer_id)
 {
-    dc27_i2c_regs.status.magic = DC27_MAGIC_NONE;
-    dc27_i2c_regs.status.flags &= ~DC27_FLAG_AWOO;
-    k_work_submit(&dc27_beacon_worker);
+    s64_t now = k_uptime_get();
+    if (dc27_expire_timeout == 0) {
+        return;
+    }
+    else if (now > dc27_expire_timeout) {
+        dc27_expire_timeout = 0;
+        dc27_i2c_regs.status.magic = DC27_MAGIC_NONE;
+        dc27_i2c_regs.status.flags = 0;
+        dc27_i2c_regs.status.color = 0;
+        dc27_i2c_regs.status.duration = 0;
+        memset(dc27_i2c_regs.status.emote, 0, sizeof(dc27_i2c_regs.status.emote));
+        k_work_submit(&dc27_beacon_worker);
+    }
 }
-
-/* Timer function to clear out any emotes and color suggestions. */
-static void dc27_emote_expire(struct k_timer *timer_id)
-{
-    dc27_i2c_regs.status.color = 0;
-    dc27_i2c_regs.status.duration = 0;
-    dc27_i2c_regs.status.flags &= ~(DC27_FLAG_EMOTE | DC27_FLAG_COLOR);
-    memset(dc27_i2c_regs.status.emote, 0, sizeof(dc27_i2c_regs.status.emote));
-}
+K_TIMER_DEFINE(dc27_magic_timer, do_expire, NULL);
 
 /* Called when the beacon contents need to be refreshed. */
 void dc27_beacon_refresh(void)
@@ -197,7 +204,6 @@ static void dc27_rssi_insert(s8_t rssi)
 }
 
 /* Cooldown timer between emotes. */
-static s64_t dc27_emote_cooldown = 60000;
 static s64_t dc27_emote_short_cooldown = 0;     /* For beacons with very high RSSI */
 static s64_t dc27_emote_medium_cooldown = 0;    /* For beacons with average RSSI */
 static s64_t dc27_emote_long_cooldown = 0;      /* For beacons with very weak RSSI */
@@ -211,9 +217,10 @@ static s64_t dc27_emote_jitter(unsigned int max)
 static void dc27_emote_reset_cooldowns(void)
 {
     s64_t now = k_uptime_get();
-    dc27_emote_short_cooldown = now + dc27_emote_jitter(dc27_emote_cooldown);
-    dc27_emote_medium_cooldown = now + dc27_emote_jitter(dc27_emote_cooldown << 1);
-    dc27_emote_long_cooldown = now + dc27_emote_jitter(dc27_emote_cooldown << 2);
+    unsigned int emote_cooldown = K_SECONDS(dc27_i2c_regs.config.cooldown);
+    dc27_emote_short_cooldown = now + dc27_emote_jitter(emote_cooldown);
+    dc27_emote_medium_cooldown = now + dc27_emote_jitter(emote_cooldown << 1);
+    dc27_emote_long_cooldown = now + dc27_emote_jitter(emote_cooldown << 2);
 }
 
 static unsigned int dc27_emote_test_cooldowns(s8_t rssi)
@@ -330,11 +337,11 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
         case DC27_MAGIC_EMOTE:
             if (data.length < 1) break;
             if (dc27_emote_test_cooldowns(rssi)) {
+                dc27_expire_timeout = k_uptime_get() + K_SECONDS(1);
                 dc27_i2c_regs.status.color = data.payload[0];
-                dc27_i2c_regs.status.flags |= DC27_FLAG_EMOTE;
+                dc27_i2c_regs.status.flags = DC27_FLAG_EMOTE;
                 dc27_i2c_regs.status.emote[0] = (data.length >= 2) ? data.payload[1] : 0x00;
                 dc27_i2c_regs.status.emote[1] = (data.length >= 3) ? data.payload[2] : 0x00;
-                k_timer_start(&dc27_emote_timer, K_SECONDS(1), 0);
             }
             break;
         
@@ -348,10 +355,10 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
                 /* Require at least 500ms for color suggestion. */
                 uint16_t duration = (data.payload[2] << 8) | data.payload[1];
                 if (duration < 500) duration = 500;
+                dc27_expire_timeout = k_uptime_get() + duration;
                 dc27_i2c_regs.status.duration = duration;
                 dc27_i2c_regs.status.color = data.payload[0];
-                dc27_i2c_regs.status.flags |= DC27_FLAG_COLOR;
-                k_timer_start(&dc27_emote_timer, duration, 0);
+                dc27_i2c_regs.status.flags = DC27_FLAG_COLOR;
             }
             break;
         
@@ -363,16 +370,17 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
 
             /* Route the magic beacon another hop */
             dc27_awoo_cooldown = k_uptime_get() + K_SECONDS(300);
+            dc27_expire_timeout = k_uptime_get() + K_SECONDS(1);
             dc27_i2c_regs.status.magic = DC27_MAGIC_AWOO;
             dc27_i2c_regs.status.origin = (data.payload[1] << 8) | data.payload[0];
             dc27_i2c_regs.status.ttl = data.payload[2];
-            dc27_i2c_regs.status.flags |= DC27_FLAG_AWOO;
+            dc27_i2c_regs.status.flags = DC27_FLAG_AWOO;
             dc27_beacon_refresh();
             break;
     }
 }
 
-int dc26_beacon_init(void)
+int dc27_beacon_init(void)
 {
     struct bt_le_scan_param scan_param = {
         .type       = BT_HCI_LE_SCAN_PASSIVE,
@@ -394,6 +402,9 @@ int dc26_beacon_init(void)
     /* Start advertising */
     dc27_emote_reset_cooldowns();
     dc27_beacon_refresh();
+
+    /* Run a timer to clear out beacon magic. */
+    k_timer_start(&dc27_magic_timer, 100, 100);
 
     /* Success */
     return 0;

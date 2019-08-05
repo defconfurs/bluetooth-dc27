@@ -81,13 +81,15 @@ main(void)
 
     /* Setup the initial state of the I2C register space. */
     hwinfo_get_device_id(dc27_i2c_regs.status.devid, sizeof(dc27_i2c_regs.status.devid));
+    dc27_i2c_regs.status.serial = crc16_ccitt(0, dc27_i2c_regs.status.devid, sizeof(dc27_i2c_regs.status.devid));
     strcpy(dc27_i2c_regs.config.name, "DEFCON Furs");
+    dc27_i2c_regs.config.cooldown = 60;
 
     console_getline_init();
     i2c_slave_init(&dc27_i2c_regs);
 
     printk("Starting DC27 Badge Comms\n");
-    err = dc26_beacon_init();
+    err = dc27_beacon_init();
     if (err) {
         printk("Bluetooth init failed (err %d)\n", err);
         return;

@@ -27,7 +27,8 @@ struct i2c_regs {
     /* Config Registers - treated as read-write. */
     struct {
         char        name[12];   /* BLE advertisement name */
-        uint8_t     __pad2[2];
+        uint8_t     __pad2[1];
+        uint8_t     cooldown;   /* Emote cooldown duration (sec) */
         uint8_t     txlen;
         uint8_t     txmagic;
         uint8_t     txdata[32];
@@ -51,7 +52,7 @@ struct i2c_regs {
 void dc27_beacon_refresh(void);
 void dc27_start_transmit(void);
 void dc27_start_awoo(uint8_t ttl, uint16_t origin);
-int dc26_beacon_init(void);
+int dc27_beacon_init(void);
 int i2c_slave_init(struct i2c_regs *regs);
 
 extern struct i2c_regs dc27_i2c_regs;
