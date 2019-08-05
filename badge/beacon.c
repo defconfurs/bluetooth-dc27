@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <misc/printk.h>
 #include <misc/util.h>
+#include <device.h>
 #include <drivers/hwinfo.h>
+#include <drivers/gpio.h>
 #include <kernel.h>
 #include <console.h>
 #include <sys/crc.h>
@@ -15,6 +17,10 @@
 #include <bluetooth/hci.h>
 
 #include "badge.h"
+
+/* blink the LED from the expire timer. */
+#define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
+#define LED	DT_ALIAS_LED0_GPIOS_PIN
 
 struct i2c_regs dc27_i2c_regs;
 
@@ -141,23 +147,51 @@ static void do_transmit(struct k_work *work)
 }
 K_WORK_DEFINE(dc27_transmit_worker, do_transmit);
 
+/* Thread to clear out specail effect beacons. */
 static void do_expire(struct k_timer *timer_id)
 {
-    s64_t now = k_uptime_get();
-    if (dc27_expire_timeout == 0) {
-        return;
+    int counter = 0;
+
+	/* Use the LED pin as output. */
+    struct device *dev = device_get_binding(LED_PORT);
+    if (dev) {
+        gpio_pin_configure(dev, LED, GPIO_DIR_OUT);
+        gpio_pin_write(dev, LED, 0);
     }
-    else if (now > dc27_expire_timeout) {
-        dc27_expire_timeout = 0;
-        dc27_i2c_regs.status.magic = DC27_MAGIC_NONE;
-        dc27_i2c_regs.status.flags = 0;
-        dc27_i2c_regs.status.color = 0;
-        dc27_i2c_regs.status.duration = 0;
-        memset(dc27_i2c_regs.status.emote, 0, sizeof(dc27_i2c_regs.status.emote));
-        k_work_submit(&dc27_beacon_worker);
+
+    for (;;) {
+        k_sleep(100);
+        counter++;
+        gpio_pin_write(dev, LED, (counter >> 4) & 1);
+
+        if (dc27_expire_timeout == 0) {
+            /* Just in case the flags somehow got set without a timeout. */
+            if (dc27_i2c_regs.status.flags) {
+                dc27_expire_timeout = k_uptime_get() + K_SECONDS(1);
+            }
+            continue;
+        }
+
+        /* Handle magic expiration. */
+        if (k_uptime_get() > dc27_expire_timeout) {
+            k_sched_lock();
+            dc27_expire_timeout = 0;
+            dc27_i2c_regs.status.magic = DC27_MAGIC_NONE;
+            dc27_i2c_regs.status.flags = 0;
+            dc27_i2c_regs.status.color = 0;
+            dc27_i2c_regs.status.duration = 0;
+            memset(dc27_i2c_regs.status.emote, 0, sizeof(dc27_i2c_regs.status.emote));
+            k_sched_unlock();
+
+            /* Request a beacon refresh. */
+            k_work_submit(&dc27_beacon_worker);
+        }
     }
+
 }
-K_TIMER_DEFINE(dc27_magic_timer, do_expire, NULL);
+K_THREAD_DEFINE(dc27_expire_thread, 1024,
+                do_expire, NULL, NULL, NULL,
+                5, 0, K_NO_WAIT);
 
 /* Called when the beacon contents need to be refreshed. */
 void dc27_beacon_refresh(void)
@@ -337,11 +371,13 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
         case DC27_MAGIC_EMOTE:
             if (data.length < 1) break;
             if (dc27_emote_test_cooldowns(rssi)) {
+                k_sched_lock();
                 dc27_expire_timeout = k_uptime_get() + K_SECONDS(1);
                 dc27_i2c_regs.status.color = data.payload[0];
                 dc27_i2c_regs.status.flags = DC27_FLAG_EMOTE;
                 dc27_i2c_regs.status.emote[0] = (data.length >= 2) ? data.payload[1] : 0x00;
                 dc27_i2c_regs.status.emote[1] = (data.length >= 3) ? data.payload[2] : 0x00;
+                k_sched_unlock();
             }
             break;
         
@@ -355,10 +391,13 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
                 /* Require at least 500ms for color suggestion. */
                 uint16_t duration = (data.payload[2] << 8) | data.payload[1];
                 if (duration < 500) duration = 500;
+
+                k_sched_lock();
                 dc27_expire_timeout = k_uptime_get() + duration;
                 dc27_i2c_regs.status.duration = duration;
                 dc27_i2c_regs.status.color = data.payload[0];
                 dc27_i2c_regs.status.flags = DC27_FLAG_COLOR;
+                k_sched_unlock();
             }
             break;
         
@@ -369,12 +408,14 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
             if (data.length < 3) break;
 
             /* Route the magic beacon another hop */
+            k_sched_lock();
             dc27_awoo_cooldown = k_uptime_get() + K_SECONDS(300);
             dc27_expire_timeout = k_uptime_get() + K_SECONDS(1);
             dc27_i2c_regs.status.magic = DC27_MAGIC_AWOO;
             dc27_i2c_regs.status.origin = (data.payload[1] << 8) | data.payload[0];
             dc27_i2c_regs.status.ttl = data.payload[2];
             dc27_i2c_regs.status.flags = DC27_FLAG_AWOO;
+            k_sched_lock();
             dc27_beacon_refresh();
             break;
     }
@@ -402,9 +443,6 @@ int dc27_beacon_init(void)
     /* Start advertising */
     dc27_emote_reset_cooldowns();
     dc27_beacon_refresh();
-
-    /* Run a timer to clear out beacon magic. */
-    k_timer_start(&dc27_magic_timer, 100, 100);
 
     /* Success */
     return 0;
