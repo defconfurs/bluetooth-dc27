@@ -7,15 +7,12 @@ import time
  
 # default to the first available bluetooth device
 device = "hci0"
-name = "DC27Emote"
+name = "DC27Awoo"
 mfrid = 0x71ff
-color = 0x7f
-emote = ""
+origin = 0
+ttl = 10
 verbose = True
-  
-if (len(sys.argv) > 1):
-    emote = sys.argv[1]
-
+ 
 # process a command string - print it if verbose is on,
 # and if not simulating, then actually run the command
 def process_command(c):
@@ -28,7 +25,8 @@ def process_command(c):
 print "Advertising on %s with:" % device
 print "       name: %s" % name
 print "       mfrid: 0x%04x" % mfrid
-print "       color: 0x%04x" % color
+print "       origin: 0x%04x" % origin
+print "       ttl: 0x%04x" % ttl
 
 # Generate the beacon content.
 ble_beacon = [
@@ -39,13 +37,12 @@ ble_beacon = [
 for ch in name:
     ble_beacon.append(ord(ch))
 ble_beacon += [
-    len(emote)+5, 0xff,
+    7, 0xff,
     (mfrid & 0x00ff) >> 0, (mfrid & 0xff00) >> 8,
-    0xb2,
-    color
+    0xa0,
+    (origin & 0xff) >> 0, (origin & 0xff00) >> 8,
+    ttl
 ]
-for ch in emote:
-    ble_beacon.append(ord(ch))
 
 def ble_hex(arr):
     hexstr = ""

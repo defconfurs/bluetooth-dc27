@@ -47,8 +47,8 @@ static void dc27_beacon_reset(struct k_work *work)
 		(DCFURS_MFGID_BEACON >> 0) & 0xff,
 		(DCFURS_MFGID_BEACON >> 8) & 0xff,
 		DC27_MAGIC_EMOTE,
-		(EMOTE_COLOR >> 0) & 0xff,
-		(EMOTE_COLOR >> 8) & 0xff
+        0x00, /* TODO: Color selection */
+        /* 'Q', 'X' */
 	};
     struct bt_data adv[] = {
         BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, (DC27_APPEARANCE & 0x00ff) >> 0, (DC27_APPEARANCE & 0xff00) >> 8),

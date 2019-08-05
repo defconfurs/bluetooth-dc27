@@ -328,28 +328,28 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
     /* Handle special beacons. */
     switch (data.magic) {
         case DC27_MAGIC_EMOTE:
-            if (data.length < 2) break;
+            if (data.length < 1) break;
             if (dc27_emote_test_cooldowns(rssi)) {
-                dc27_i2c_regs.status.color = (data.payload[1] << 8) | data.payload[0];
+                dc27_i2c_regs.status.color = data.payload[0];
                 dc27_i2c_regs.status.flags |= DC27_FLAG_EMOTE;
-                dc27_i2c_regs.status.emote[0] = (data.length >= 3) ? data.payload[2] : 0x00;
-                dc27_i2c_regs.status.emote[1] = (data.length >= 4) ? data.payload[1] : 0x00;
+                dc27_i2c_regs.status.emote[0] = (data.length >= 2) ? data.payload[1] : 0x00;
+                dc27_i2c_regs.status.emote[1] = (data.length >= 3) ? data.payload[2] : 0x00;
                 k_timer_start(&dc27_emote_timer, K_SECONDS(1), 0);
             }
             break;
         
         case DC27_MAGIC_COLOR:
-            if (data.length < 4) break;
+            if (data.length < 3) break;
             /* Only accept color suggestion from DCFurs beacons.  */
             /* TODO: Do we want any signing or obfuscation to prevent abuse? */
             /* A cooldown would prevent coordinated lighting effects. */
             if (data.mfgid != DCFURS_MFGID_BEACON) break;
             else {
                 /* Require at least 500ms for color suggestion. */
-                uint16_t duration = (data.payload[3] << 8) | data.payload[2];
+                uint16_t duration = (data.payload[2] << 8) | data.payload[1];
                 if (duration < 500) duration = 500;
                 dc27_i2c_regs.status.duration = duration;
-                dc27_i2c_regs.status.color = (data.payload[1] << 8) | data.payload[0];
+                dc27_i2c_regs.status.color = data.payload[0];
                 dc27_i2c_regs.status.flags |= DC27_FLAG_COLOR;
                 k_timer_start(&dc27_emote_timer, duration, 0);
             }

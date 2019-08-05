@@ -14,19 +14,20 @@ struct i2c_regs {
         /* Dynamic data received via BLE */
         uint8_t     magic;      /* Outgoing magic byte. */
         uint8_t     flags;      /* DC27_FLAG_xxxx */
-        uint16_t    color;      /* Suggested color point (rgb565). */
+        uint8_t     color;      /* Color hue in 3-degree steps (0-120). */
+        uint8_t     __pad0[1];
         uint16_t    duration;   /* Suggested color duration (msec). */
         int8_t      rssi;       /* Average beacon RSSI. */
         uint8_t     ttl;        /* TTL for routed messages. */
         uint16_t    origin;     /* Originator for current messages. */
         uint8_t     emote[2];   /* Received emote string. */
-        uint8_t     __pad0[10];
+        uint8_t     __pad1[10];
     } status;
 
     /* Config Registers - treated as read-write. */
     struct {
         char        name[12];   /* BLE advertisement name */
-        uint8_t     __pad1[2];
+        uint8_t     __pad2[2];
         uint8_t     txlen;
         uint8_t     txmagic;
         uint8_t     txdata[32];
