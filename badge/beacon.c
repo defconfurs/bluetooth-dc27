@@ -139,6 +139,7 @@ K_WORK_DEFINE(dc27_transmit_worker, do_transmit);
 static void dc27_magic_expire(struct k_timer *timer_id)
 {
     dc27_i2c_regs.status.magic = DC27_MAGIC_NONE;
+    dc27_i2c_regs.status.flags &= ~DC27_FLAG_AWOO;
     k_work_submit(&dc27_beacon_worker);
 }
 
@@ -147,7 +148,7 @@ static void dc27_emote_expire(struct k_timer *timer_id)
 {
     dc27_i2c_regs.status.color = 0;
     dc27_i2c_regs.status.duration = 0;
-    dc27_i2c_regs.status.flags &= ~DC27_FLAG_EMOTE;
+    dc27_i2c_regs.status.flags &= ~(DC27_FLAG_EMOTE | DC27_FLAG_COLOR);
     memset(dc27_i2c_regs.status.emote, 0, sizeof(dc27_i2c_regs.status.emote));
 }
 
@@ -333,7 +334,7 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
                 dc27_i2c_regs.status.flags |= DC27_FLAG_EMOTE;
                 dc27_i2c_regs.status.emote[0] = (data.length >= 3) ? data.payload[2] : 0x00;
                 dc27_i2c_regs.status.emote[1] = (data.length >= 4) ? data.payload[1] : 0x00;
-                k_timer_start(&dc27_emote_timer, K_SECONDS(5), 0);
+                k_timer_start(&dc27_emote_timer, K_SECONDS(1), 0);
             }
             break;
         
@@ -364,14 +365,11 @@ static void scan_cb(const bt_addr_le_t *addr, s8_t rssi, u8_t adv_type,
             dc27_awoo_cooldown = k_uptime_get() + K_SECONDS(300);
             dc27_i2c_regs.status.magic = DC27_MAGIC_AWOO;
             dc27_i2c_regs.status.origin = (data.payload[1] << 8) | data.payload[0];
-            dc27_i2c_regs.status.ttl = data.payload[0];
+            dc27_i2c_regs.status.ttl = data.payload[2];
+            dc27_i2c_regs.status.flags |= DC27_FLAG_AWOO;
             dc27_beacon_refresh();
             break;
     }
-
-#if 0
-    printk("rx: mfgid=0x%02x rssi=%d avg=%d magic=%02x\n", data.mfgid, rssi, dc27_rssi_average(), data.magic);
-#endif
 }
 
 int dc26_beacon_init(void)

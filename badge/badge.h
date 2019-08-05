@@ -36,6 +36,7 @@ struct i2c_regs {
 /* Status Register Flags */
 #define DC27_FLAG_EMOTE     (1 << 0)
 #define DC27_FLAG_COLOR     (1 << 1)
+#define DC27_FLAG_AWOO      (1 << 2)
 
 /* #badgelife/DCFurs beacon constants */
 #define DC27_MAGIC_NONE     0x00
