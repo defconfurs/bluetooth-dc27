@@ -14,7 +14,7 @@
 #include <logging/log.h>
 LOG_MODULE_REGISTER(i2c_nrfx_twis);
 
-#define I2C_REGADDR_TEXT 64
+#define I2C_REGADDR_TEXT 96
 
 struct i2c_dcfurs_data {
     nrfx_twis_t twis;
@@ -25,8 +25,16 @@ struct i2c_dcfurs_data {
     size_t          text_length;
     /* Pretend to operate as an I2C EEPROM with 8-bit addressing. */
     uint8_t  bufaddr;
-    uint8_t  buffer[256];
+    uint8_t  buffer[512];
 };
+
+/* Undocumented text blurb. */
+static const char i2c_text_data[] = 
+    "This device complies with part 15 of the Furry Communications\n"
+    "Commission Rules. Operation is subject to the following two\n"
+    "conditions: (1) This device may not cause harmful awoos, and\n"
+    "(2) this device must accept any hugs and scritches, including\n"
+    "those that may cause undesired attention.\n";
 
 /* I2C slave hardware configuration. */
 static struct i2c_dcfurs_data i2c_data = {
@@ -39,6 +47,8 @@ static struct i2c_dcfurs_data i2c_data = {
         .sda_pull = NRF_GPIO_PIN_NOPULL,
         .interrupt_priority = NRFX_TWIS_DEFAULT_CONFIG_IRQ_PRIORITY,
     },
+    .text = i2c_text_data,
+    .text_length = sizeof(i2c_text_data),
     .bufaddr = 0,
     .buffer = {0},
 };
@@ -55,7 +65,7 @@ static void fill_buffer(struct i2c_dcfurs_data *data)
         data->buffer[out++] = indata[in++];
     }
 
-    /* Get bytes from the test region. */
+    /* Get bytes from the text region. */
     while (in < I2C_REGADDR_TEXT) {
         data->buffer[out++] = 0x00;
         in++;
@@ -156,8 +166,6 @@ int i2c_slave_init(struct i2c_regs *regs)
 	nrfx_err_t result;
 
     i2c_data.regs = regs;
-    i2c_data.text = "Hello World!";
-    i2c_data.text_length = strlen(i2c_data.text);
 
     IRQ_CONNECT(DT_NORDIC_NRF_I2C_I2C_0_IRQ_0,
             DT_NORDIC_NRF_I2C_I2C_0_IRQ_0_PRIORITY,
