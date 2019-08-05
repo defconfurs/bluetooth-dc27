@@ -1,6 +1,6 @@
 # Kconfig - nRF52810 PCA10040 board configuration
 #
-# Copyright (c) 2018 Nordic Semiconductor ASA
+# Copyright (c) 2019 DEFCON Furs
 #
 # SPDX-License-Identifier: Apache-2.0
 
@@ -9,12 +9,8 @@ if BOARD_DCFURS_BT832A
 config BOARD
 	default "dcfurs_bt832a"
 
-if ADC
-
-config ADC_0
-	default y
-
-endif # ADC
+config GPIO_AS_PINRESET
+	default n
 
 if I2C
 
@@ -23,11 +19,7 @@ config I2C_0
 
 endif # I2C
 
-if SPI
-
-config SPI_0
-	default y
-
-endif # SPI
+config BT_CTLR
+	default BT
 
 endif # BOARD_DCFURS_BT832A
