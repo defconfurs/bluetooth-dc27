@@ -162,18 +162,18 @@ static void do_expire(struct k_timer *timer_id)
 {
     /* Start a watchdog. */
     int wdt_channel_id;
-	struct wdt_timeout_cfg wdt_config;
-	struct device *wdt = wdt = device_get_binding(WDT_DEV_NAME);
+    struct wdt_timeout_cfg wdt_config;
+    struct device *wdt = wdt = device_get_binding(WDT_DEV_NAME);
 
-	/* Reset SoC if watchdog timer expires. */
-	wdt_config.flags = WDT_FLAG_RESET_SOC;
-	wdt_config.window.min = 0U;
-	wdt_config.window.max = K_SECONDS(5);
+    /* Reset SoC if watchdog timer expires. */
+    wdt_config.flags = WDT_FLAG_RESET_SOC;
+    wdt_config.window.min = 0U;
+    wdt_config.window.max = K_SECONDS(5);
     wdt_config.callback = NULL;
-	wdt_channel_id = wdt_install_timeout(wdt, &wdt_config);
-	wdt_setup(wdt, 0);
+    wdt_channel_id = wdt_install_timeout(wdt, &wdt_config);
+    wdt_setup(wdt, 0);
 
-	/* Use the LED pin as output. */
+    /* Use the LED pin as output. */
     struct device *dev = device_get_binding(LED_PORT);
     if (dev) {
         gpio_pin_configure(dev, LED, GPIO_DIR_OUT);
