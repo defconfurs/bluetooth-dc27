@@ -6,6 +6,7 @@
 #include <misc/printk.h>
 #include <misc/util.h>
 #include <device.h>
+#include <drivers/watchdog.h>
 #include <drivers/hwinfo.h>
 #include <drivers/gpio.h>
 #include <kernel.h>
@@ -17,6 +18,13 @@
 #include <bluetooth/hci.h>
 
 #include "badge.h"
+
+/* Watchdog configuration. */
+#ifdef CONFIG_WDT_0_NAME
+#define WDT_DEV_NAME CONFIG_WDT_0_NAME
+#else
+#define WDT_DEV_NAME DT_WDT_0_NAME
+#endif
 
 /* blink the LED from the expire timer. */
 #define LED_PORT DT_ALIAS_LED0_GPIOS_CONTROLLER
@@ -147,10 +155,23 @@ static void do_transmit(struct k_work *work)
 }
 K_WORK_DEFINE(dc27_transmit_worker, do_transmit);
 
+static int debug_counter = 0;
+
 /* Thread to clear out specail effect beacons. */
 static void do_expire(struct k_timer *timer_id)
 {
-    int counter = 0;
+    /* Start a watchdog. */
+    int wdt_channel_id;
+	struct wdt_timeout_cfg wdt_config;
+	struct device *wdt = wdt = device_get_binding(WDT_DEV_NAME);
+
+	/* Reset SoC if watchdog timer expires. */
+	wdt_config.flags = WDT_FLAG_RESET_SOC;
+	wdt_config.window.min = 0U;
+	wdt_config.window.max = K_SECONDS(5);
+    wdt_config.callback = NULL;
+	wdt_channel_id = wdt_install_timeout(wdt, &wdt_config);
+	wdt_setup(wdt, 0);
 
 	/* Use the LED pin as output. */
     struct device *dev = device_get_binding(LED_PORT);
@@ -161,8 +182,9 @@ static void do_expire(struct k_timer *timer_id)
 
     for (;;) {
         k_sleep(100);
-        counter++;
-        gpio_pin_write(dev, LED, (counter >> 4) & 1);
+        debug_counter++;
+        gpio_pin_write(dev, LED, (debug_counter >> 4) & 1);
+        wdt_feed(wdt, wdt_channel_id);
 
         if (dc27_expire_timeout == 0) {
             /* Just in case the flags somehow got set without a timeout. */
@@ -187,7 +209,6 @@ static void do_expire(struct k_timer *timer_id)
             k_work_submit(&dc27_beacon_worker);
         }
     }
-
 }
 K_THREAD_DEFINE(dc27_expire_thread, 1024,
                 do_expire, NULL, NULL, NULL,
