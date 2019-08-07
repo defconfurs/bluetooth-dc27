@@ -25,7 +25,11 @@ struct i2c_dcfurs_data {
     size_t          text_length;
     /* Pretend to operate as an I2C EEPROM with 8-bit addressing. */
     uint8_t  bufaddr;
+#if defined(NRF52810_XXAA)
     uint8_t  buffer[512];
+#else
+    uint8_t  buffer[192];
+#endif
 };
 
 /* Undocumented text blurb. */
