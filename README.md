@@ -37,8 +37,8 @@ between badge makers. Badges are required to set an appearance code of
 |--------| -----------|-----------|-----------|-----------|-----------
 | 0x71ff | 0x00       | Badge ID  | Badge ID  |           | Normal Operation
 | 0x71ff | 0xa0       | Origin ID | Origin ID |           | Awoo Beacon
-| 0x71ff | 0xb3       | Color Hue | ASCII     | ASCII     | Emote Beacon
-| 0x71ff | 0xc2       | Color Hue | Time msec | Time msec | Color suggestion beacon.
+| 0x71ff | 0xb2       | Color Hue | ASCII     | ASCII     | Emote Beacon
+| 0x71ff | 0xc3       | Color Hue | Time msec | Time msec | Color suggestion beacon.
 
 The badge ID is calculated as an 16-bit CCITT CRC of the bluetooth module's
 hardware device ID.
